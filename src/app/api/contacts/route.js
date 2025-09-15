@@ -99,6 +99,7 @@ export async function POST(request) {
     const contact = new Contact({
       userId: decoded.userId,
       phoneNumber: contactData.phoneNumber,
+      normalizedPhoneNumber: normalizedPhone,
       firstName: contactData.firstName || '',
       lastName: contactData.lastName || '',
       email: contactData.email || '',
