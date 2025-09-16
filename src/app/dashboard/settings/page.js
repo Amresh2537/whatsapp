@@ -1,32 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { 
+  CogIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+} from '@heroicons/react/24/outline';
 
 export default function SettingsPage() {
-  const [user, setUser] = useState(null);
-  const [whatsappConfig, setWhatsappConfig] = useState({
+  const [config, setConfig] = useState({
     businessAccountId: '',
     accessToken: '',
     phoneNumberId: '',
     webhookVerifyToken: '',
     isConfigured: false,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  const [activeTab, setActiveTab] = useState('whatsapp');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [testingConnection, setTestingConnection] = useState(false);
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-    loadWhatsAppConfig();
+    loadConfig();
   }, []);
 
-  const loadWhatsAppConfig = async () => {
+  const loadConfig = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
       const response = await fetch('/api/config/whatsapp', {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -34,91 +36,74 @@ export default function SettingsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setWhatsappConfig(prev => ({ ...prev, ...data.config }));
+        setConfig(prev => ({ ...prev, ...data.config }));
       }
-    } catch (error) {
-      console.error('Error loading WhatsApp config:', error);
+    } catch (err) {
+      console.error('Error loading config:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleWhatsAppConfigSave = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setMessage({ type: '', text: '' });
+    setError('');
+    setSuccess('');
 
     try {
       const token = localStorage.getItem('token');
       const response = await fetch('/api/config/whatsapp', {
-        method: 'POST',
+        method: config.isConfigured ? 'PUT' : 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          businessAccountId: whatsappConfig.businessAccountId,
-          accessToken: whatsappConfig.accessToken,
-          phoneNumberId: whatsappConfig.phoneNumberId,
-          webhookVerifyToken: whatsappConfig.webhookVerifyToken,
-        }),
+        body: JSON.stringify(config),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setMessage({ type: 'success', text: 'WhatsApp configuration saved successfully!' });
-        setWhatsappConfig(prev => ({ ...prev, ...data.config, isConfigured: true }));
+        setSuccess('WhatsApp configuration saved successfully!');
+        setConfig(prev => ({ ...prev, isConfigured: true, ...data.config }));
         
-        // Update user data
-        const updatedUser = { ...user, whatsappConfigured: true };
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
+        // Update user data in localStorage
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
+        userData.whatsappConfigured = true;
+        localStorage.setItem('user', JSON.stringify(userData));
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to save configuration' });
+        setError(data.error || 'Failed to save configuration');
       }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } catch (err) {
+      setError('Network error. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleProfileUpdate = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage({ type: '', text: '' });
+  const testConnection = async () => {
+    setTestingConnection(true);
+    setError('');
+    setSuccess('');
 
     try {
       const token = localStorage.getItem('token');
-      const formData = new FormData(e.target);
-      
-      const response = await fetch('/api/auth/me', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: formData.get('firstName'),
-          lastName: formData.get('lastName'),
-          email: formData.get('email'),
-        }),
+      const response = await fetch('/api/templates', {
+        headers: { 'Authorization': `Bearer ${token}` },
       });
 
-      const data = await response.json();
-
       if (response.ok) {
-        setMessage({ type: 'success', text: 'Profile updated successfully!' });
-        setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        const data = await response.json();
+        setSuccess(`Connection successful! Found ${data.templates?.length || 0} templates.`);
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to update profile' });
+        const errorData = await response.json();
+        setError(errorData.error || 'Connection test failed');
       }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } catch (err) {
+      setError('Network error during connection test.');
     } finally {
-      setSaving(false);
+      setTestingConnection(false);
     }
   };
 
@@ -132,215 +117,175 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-gray-600">
-          Manage your account settings and WhatsApp configuration.
+          Configure your WhatsApp Business API connection and other preferences.
         </p>
       </div>
 
-      {/* Message */}
-      {message.text && (
-        <div className={`rounded-md p-4 ${
-          message.type === 'success' 
-            ? 'bg-green-50 border border-green-200 text-green-800' 
-            : 'bg-red-50 border border-red-200 text-red-800'
-        }`}>
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4">
           <div className="flex">
-            {message.type === 'success' ? (
-              <CheckCircleIcon className="h-5 w-5 mr-2" />
-            ) : (
-              <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
+            <CheckCircleIcon className="h-5 w-5 text-green-400 mr-2" />
+            <p className="text-green-800">{success}</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <ExclamationTriangleIcon className="h-5 w-5 text-red-400 mr-2" />
+            <p className="text-red-800">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Configuration */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <CogIcon className="h-6 w-6 text-gray-400 mr-3" />
+              <h3 className="text-lg font-medium text-gray-900">WhatsApp Business API Configuration</h3>
+            </div>
+            {config.isConfigured && (
+              <div className="flex items-center">
+                <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-sm text-green-700">Configured</span>
+              </div>
             )}
-            <span>{message.text}</span>
           </div>
         </div>
-      )}
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'profile'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Profile
-          </button>
-          <button
-            onClick={() => setActiveTab('whatsapp')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'whatsapp'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            WhatsApp Configuration
-          </button>
-        </nav>
-      </div>
-
-      {/* Profile Tab */}
-      {activeTab === 'profile' && user && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Profile Information</h3>
-            <p className="mt-1 text-sm text-gray-600">
-              Update your personal information and email address.
-            </p>
-          </div>
-          <form onSubmit={handleProfileUpdate} className="px-6 py-4 space-y-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                  First Name
-                </label>
-                <input
-                  type="text"
-                  name="firstName"
-                  id="firstName"
-                  defaultValue={user.firstName}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  name="lastName"
-                  id="lastName"
-                  defaultValue={user.lastName}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email Address
-              </label>
-              <input
-                type="email"
-                name="email"
-                id="email"
-                defaultValue={user.email}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                required
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save Profile'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* WhatsApp Configuration Tab */}
-      {activeTab === 'whatsapp' && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">WhatsApp Business API Configuration</h3>
-            <p className="mt-1 text-sm text-gray-600">
-              Configure your WhatsApp Business API credentials to start sending messages.
-            </p>
-          </div>
-          <form onSubmit={handleWhatsAppConfigSave} className="px-6 py-4 space-y-6">
+        
+        <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label htmlFor="businessAccountId" className="block text-sm font-medium text-gray-700">
-                Business Account ID
+                Business Account ID *
               </label>
               <input
                 type="text"
                 id="businessAccountId"
-                value={whatsappConfig.businessAccountId}
-                onChange={(e) => setWhatsappConfig(prev => ({ ...prev, businessAccountId: e.target.value }))}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                placeholder="Enter your WhatsApp Business Account ID"
                 required
-              />
-            </div>
-            <div>
-              <label htmlFor="accessToken" className="block text-sm font-medium text-gray-700">
-                Access Token
-              </label>
-              <input
-                type="password"
-                id="accessToken"
-                value={whatsappConfig.accessToken}
-                onChange={(e) => setWhatsappConfig(prev => ({ ...prev, accessToken: e.target.value }))}
+                value={config.businessAccountId}
+                onChange={(e) => setConfig(prev => ({ ...prev, businessAccountId: e.target.value }))}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                placeholder="Enter your WhatsApp Access Token"
-                required
+                placeholder="Enter your Business Account ID"
               />
+              <p className="mt-1 text-sm text-gray-500">
+                Find this in your Facebook Business Manager
+              </p>
             </div>
+
             <div>
               <label htmlFor="phoneNumberId" className="block text-sm font-medium text-gray-700">
-                Phone Number ID
+                Phone Number ID *
               </label>
               <input
                 type="text"
                 id="phoneNumberId"
-                value={whatsappConfig.phoneNumberId}
-                onChange={(e) => setWhatsappConfig(prev => ({ ...prev, phoneNumberId: e.target.value }))}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                placeholder="Enter your WhatsApp Phone Number ID"
                 required
-              />
-            </div>
-            <div>
-              <label htmlFor="webhookVerifyToken" className="block text-sm font-medium text-gray-700">
-                Webhook Verify Token
-              </label>
-              <input
-                type="text"
-                id="webhookVerifyToken"
-                value={whatsappConfig.webhookVerifyToken}
-                onChange={(e) => setWhatsappConfig(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
+                value={config.phoneNumberId}
+                onChange={(e) => setConfig(prev => ({ ...prev, phoneNumberId: e.target.value }))}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                placeholder="Enter your Webhook Verify Token"
+                placeholder="Enter your Phone Number ID"
               />
+              <p className="mt-1 text-sm text-gray-500">
+                Find this in your WhatsApp Business Account
+              </p>
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <div className="flex">
-                <svg className="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium">How to get these credentials:</p>
-                  <ol className="mt-2 list-decimal list-inside space-y-1">
-                    <li>Go to Meta Business Manager</li>
-                    <li>Navigate to WhatsApp Business API</li>
-                    <li>Get your Business Account ID from Account Info</li>
-                    <li>Generate an Access Token with messaging permissions</li>
-                    <li>Get your Phone Number ID from the WhatsApp Manager</li>
-                  </ol>
-                </div>
+          </div>
+
+          <div>
+            <label htmlFor="accessToken" className="block text-sm font-medium text-gray-700">
+              Access Token *
+            </label>
+            <textarea
+              id="accessToken"
+              required
+              rows={3}
+              value={config.accessToken}
+              onChange={(e) => setConfig(prev => ({ ...prev, accessToken: e.target.value }))}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+              placeholder="Enter your WhatsApp Access Token"
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Generate this token from your Facebook Developer Console
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="webhookVerifyToken" className="block text-sm font-medium text-gray-700">
+              Webhook Verify Token
+            </label>
+            <input
+              type="text"
+              id="webhookVerifyToken"
+              value={config.webhookVerifyToken}
+              onChange={(e) => setConfig(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+              placeholder="Enter your webhook verify token (optional)"
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Used to verify webhook requests from WhatsApp
+            </p>
+          </div>
+
+          {/* Info Box */}
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            <div className="flex">
+              <InformationCircleIcon className="h-5 w-5 text-blue-400 mr-2" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium">How to get your WhatsApp API credentials:</p>
+                <ol className="mt-2 list-decimal list-inside space-y-1">
+                  <li>Go to Facebook Developer Console</li>
+                  <li>Create or select your WhatsApp Business API app</li>
+                  <li>Copy the Business Account ID from the app dashboard</li>
+                  <li>Generate a permanent access token</li>
+                  <li>Get the Phone Number ID from WhatsApp Business Account</li>
+                </ol>
+                <p className="mt-2">
+                  Your webhook URL should be: <code className="bg-white px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook</code>
+                </p>
               </div>
             </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {saving ? 'Testing & Saving...' : 'Save Configuration'}
-              </button>
-            </div>
-          </form>
+          </div>
+
+          {/* Submit Buttons */}
+          <div className="flex justify-between">
+            <button
+              type="button"
+              onClick={testConnection}
+              disabled={testingConnection || !config.businessAccountId || !config.accessToken || !config.phoneNumberId}
+              className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testingConnection ? 'Testing...' : 'Test Connection'}
+            </button>
+            
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving...' : 'Save Configuration'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Additional Settings (placeholder for future features) */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">General Settings</h3>
         </div>
-      )}
+        <div className="px-6 py-4">
+          <p className="text-sm text-gray-500">Additional settings will be available here in future updates.</p>
+        </div>
+      </div>
     </div>
   );
 }

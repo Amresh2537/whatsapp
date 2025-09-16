@@ -149,17 +149,22 @@ export async function POST(request) {
       let response;
       
       if (messageData.templateName) {
+        // Get template analysis for proper parameter handling
+        const templateAnalysis = await whatsappAPI.fetchTemplateDetails(messageData.templateName);
+        const analysis = templateAnalysis ? whatsappAPI.analyzeTemplateParameters(templateAnalysis) : null;
+        
         // Send template message
         response = await whatsappAPI.sendTemplateMessage({
-          phoneNumber: normalizedPhone,
+          phoneNumber: messageData.phoneNumber, // Let WhatsApp API handle normalization
           templateName: messageData.templateName,
           languageCode: messageData.templateLanguage || 'en_US',
           headerValue: messageData.headerValue,
           bodyParameters: messageData.bodyParameters || [],
+          templateAnalysis: analysis,
         });
       } else {
         // Send text message
-        response = await whatsappAPI.sendTextMessage(normalizedPhone, messageData.text);
+        response = await whatsappAPI.sendTextMessage(messageData.phoneNumber, messageData.text);
       }
 
       // Update message with WhatsApp response

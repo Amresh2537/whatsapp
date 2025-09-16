@@ -24,13 +24,22 @@ class WhatsAppAPI {
   async fetchAllTemplates() {
     try {
       const allTemplates = [];
-      let url = `/${this.businessAccountId}/message_templates?fields=name,status,language,components&limit=100`;
+      let url = `/${this.businessAccountId}/message_templates?fields=name,status,language,components,category,quality_score&limit=100`;
       
       while (url) {
         const response = await this.axios.get(url);
         
         if (response.data && response.data.data) {
-          allTemplates.push(...response.data.data);
+          // Add additional status information to each template
+          const templatesWithStatus = response.data.data.map(template => ({
+            ...template,
+            statusDisplay: this.getTemplateStatusDisplay(template.status),
+            isApproved: template.status === 'APPROVED',
+            isPending: template.status === 'PENDING',
+            isRejected: template.status === 'REJECTED',
+          }));
+          
+          allTemplates.push(...templatesWithStatus);
           
           // Check for next page
           url = response.data.paging && response.data.paging.next 
@@ -47,7 +56,35 @@ class WhatsAppAPI {
       return allTemplates;
     } catch (error) {
       console.error('Error fetching templates:', error.response?.data || error.message);
+      
+      // Check if it's a permissions error and provide more helpful message
+      if (error.response?.data?.error?.code === 100) {
+        throw new Error(`WhatsApp API Error: ${error.response.data.error.message}. Please check your Business Account ID and access token permissions.`);
+      }
+      
       throw new Error(`Failed to fetch templates: ${error.response?.data?.error?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Get user-friendly template status display
+   */
+  getTemplateStatusDisplay(status) {
+    switch (status) {
+      case 'APPROVED':
+        return { text: 'Approved', color: 'green' };
+      case 'PENDING':
+        return { text: 'Pending Review', color: 'yellow' };
+      case 'REJECTED':
+        return { text: 'Rejected', color: 'red' };
+      case 'DISABLED':
+        return { text: 'Disabled', color: 'gray' };
+      case 'PAUSED':
+        return { text: 'Paused', color: 'orange' };
+      case 'PENDING_DELETION':
+        return { text: 'Pending Deletion', color: 'red' };
+      default:
+        return { text: status || 'Unknown', color: 'gray' };
     }
   }
 
@@ -155,9 +192,12 @@ class WhatsAppAPI {
     templateAnalysis = null
   }) {
     try {
+      // Normalize phone number (ensure it starts with + or country code)
+      const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+      
       const payload = {
         messaging_product: "whatsapp",
-        to: phoneNumber,
+        to: normalizedPhone,
         type: "template",
         template: {
           name: templateName,
@@ -219,9 +259,12 @@ class WhatsAppAPI {
    */
   async sendTextMessage(phoneNumber, text) {
     try {
+      // Normalize phone number (ensure it starts with + or country code)
+      const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+      
       const payload = {
         messaging_product: "whatsapp",
-        to: phoneNumber,
+        to: normalizedPhone,
         type: "text",
         text: { body: text }
       };
@@ -232,6 +275,27 @@ class WhatsAppAPI {
       console.error('Error sending text message:', error.response?.data || error.message);
       throw new Error(`Failed to send text message: ${error.response?.data?.error?.message || error.message}`);
     }
+  }
+
+  /**
+   * Normalize phone number for WhatsApp API
+   */
+  normalizePhoneNumber(phoneNumber) {
+    if (!phoneNumber) return null;
+    
+    // Remove all non-digit characters except +
+    let normalized = phoneNumber.replace(/[^\d+]/g, '');
+    
+    // If it doesn't start with +, assume it needs country code
+    if (!normalized.startsWith('+')) {
+      // If it starts with a digit, add + prefix
+      if (/^\d/.test(normalized)) {
+        normalized = '+' + normalized;
+      }
+    }
+    
+    // Remove + for WhatsApp API (it expects just numbers)
+    return normalized.replace(/^\+/, '');
   }
 
   /**

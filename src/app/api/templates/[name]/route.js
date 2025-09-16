@@ -31,7 +31,8 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'WhatsApp configuration not found' }, { status: 400 });
     }
 
-    const templateName = params.name;
+    const resolvedParams = await params;
+    const templateName = resolvedParams.name;
     
     // Try to get template from database first
     let template = await Template.findOne({ userId: user._id, name: templateName });
@@ -83,7 +84,8 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'WhatsApp configuration not found' }, { status: 400 });
     }
 
-    const templateName = params.name;
+    const resolvedParams = await params;
+    const templateName = resolvedParams.name;
     
     // Delete from WhatsApp API
     const whatsappAPI = createWhatsAppAPI(user.whatsappConfig);

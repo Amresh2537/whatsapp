@@ -19,6 +19,10 @@ const messageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Campaign',
   },
+  replyToMessageId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+  },
   whatsappMessageId: String,
   phoneNumber: {
     type: String,

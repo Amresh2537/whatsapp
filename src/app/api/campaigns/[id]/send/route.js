@@ -39,8 +39,9 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Message limit exceeded' }, { status: 403 });
     }
 
+    const resolvedParams = await params;
     const campaign = await Campaign.findOne({ 
-      _id: params.id, 
+      _id: resolvedParams.id, 
       userId: decoded.userId 
     }).populate('templateId');
     
